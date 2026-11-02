@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum ContestStatus {
+  LOBBY
+  RUNNING
+  FINISHED
+}
+
+model User {
+  id           String        @id @default(cuid())
+  role         UserRole      @default(STUDENT)
+  username     String        @unique @db.VarChar(32)
+  passwordHash String        @db.VarChar(255)
+  xp           Int           @default(0)
+  sessionVersion Int          @default(0)
+  titleId      String?
+  createdAt    DateTime      @default(now())
+  title        Title?        @relation(fields: [titleId], references: [id], onDelete: SetNull)
+  tests        Test[]        @relation("TestOwner")
+  contests     Contest[]     @relation("ContestTeacher")
+  participants Participant[]
+
+  @@index([role, createdAt])
+  @@index([xp])
+  @@index([titleId])
+}
+
+model Test {
+  id        String     @id @default(cuid())
+  ownerId   String
+  title     String     @db.VarChar(120)
+  createdAt DateTime   @default(now())
+  owner     User       @relation("TestOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  questions Question[]
+  contests  Contest[]
+
+  @@index([ownerId, createdAt])
+}
+
+model Question {
+  id            String   @id @default(cuid())
+  testId        String
+  text          String   @db.Text
+  options       Json
+  correctIndex  Int
+  xp            Int      @default(10)
+  order         Int
+  test          Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers       Answer[]
+
+  @@unique([testId, order])
+  @@index([testId])
+}
+
+model Contest {
+  id                String        @id @default(cuid())
+  testId            String
+  teacherId         String
+  joinCode          String        @unique @db.Char(6)
+  status            ContestStatus @default(LOBBY)
+  timePerQuestion   Int           @default(20)
+  createdAt         DateTime      @default(now())
+  test              Test          @relation(fields: [testId], references: [id], onDelete: Cascade)
+  teacher           User          @relation("ContestTeacher", fields: [teacherId], references: [id], onDelete: Cascade)
+  participants      Participant[]
+
+  @@index([teacherId, createdAt])
+  @@index([status, createdAt])
+}
+
+model Participant {
+  id        String   @id @default(cuid())
+  contestId String
+  userId    String?
+  nickname  String   @db.VarChar(32)
+  score     Int      @default(0)
+  contest   Contest  @relation(fields: [contestId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  answers   Answer[]
+
+  @@unique([contestId, nickname])
+  @@index([contestId, score])
+  @@index([userId])
+}
+
+model Answer {
+  id            String      @id @default(cuid())
+  participantId String
+  questionId    String
+  choice        Int
+  isCorrect     Boolean
+  timeMs        Int
+  xpEarned      Int         @default(0)
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  question      Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([participantId, questionId])
+  @@index([questionId, isCorrect])
+}
+
+model Title {
+  id     String   @id @default(cuid())
+  name   String   @unique @db.VarChar(60)
+  minXp  Int      @unique
+  users  User[]
+
+  @@index([minXp])
+}
